@@ -1,5 +1,9 @@
 {
   "extends": "@tsconfig/svelte/tsconfig.json",
-  "include": ["src/**/*"],
+  "compilerOptions": {
+    "lib": ["DOM", "ESNext"],
+    "strict": true
+  },
+  "include": ["src/**/*", "../../packages/svelte-lazy-component/index.d.ts"],
   "exclude": ["node_modules/*", "public/*"]
 }

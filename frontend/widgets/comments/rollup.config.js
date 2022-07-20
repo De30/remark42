@@ -1,50 +1,37 @@
-import svelte from 'rollup-plugin-svelte';
-import commonjs from '@rollup/plugin-commonjs';
-import resolve from '@rollup/plugin-node-resolve';
-import livereload from 'rollup-plugin-livereload';
-import { terser } from 'rollup-plugin-terser';
-import sveltePreprocess from 'svelte-preprocess';
-import typescript from '@rollup/plugin-typescript';
-import css from 'rollup-plugin-css-only';
+import fs from 'fs'
+import svelte from 'rollup-plugin-svelte'
+import commonjs from '@rollup/plugin-commonjs'
+import resolve from '@rollup/plugin-node-resolve'
+import livereload from 'rollup-plugin-livereload'
+import { terser } from 'rollup-plugin-terser'
+import sveltePreprocess from 'svelte-preprocess'
+import typescript from '@rollup/plugin-typescript'
+import css from 'rollup-plugin-css-only'
+import url from '@rollup/plugin-url'
+import dev from 'rollup-plugin-dev'
 
-const production = !process.env.ROLLUP_WATCH;
-
-function serve() {
-	let server;
-
-	function toExit() {
-		if (server) server.kill(0);
-	}
-
-	return {
-		writeBundle() {
-			if (server) return;
-			server = require('child_process').spawn('npm', ['run', 'start', '--', '--dev', '--http2', '--key', './certs/key.pem', '--cert', './certs/cert.pem'], {
-				stdio: ['ignore', 'inherit', 'inherit'],
-				shell: true
-			});
-
-			process.on('SIGTERM', toExit);
-			process.on('exit', toExit);
-		}
-	};
-}
+const production = !process.env.ROLLUP_WATCH
 
 export default {
 	input: production ? 'src/index.ts' : 'src/dev.ts',
+	// prevent from generating entry chunk with facade reexport
+	preserveEntrySignatures: 'allow-extension',
 	output: {
 		sourcemap: true,
-		format: 'iife',
-		name: 'app',
-		file: 'public/build/comments.js'
+		format: 'esm',
+		dir: 'public/build',
 	},
 	plugins: [
 		svelte({
-			preprocess: sveltePreprocess({ sourceMap: !production }),
+			preprocess: sveltePreprocess({ sourceMap: !production, postcss: true }),
 			compilerOptions: {
 				// enable run-time checks when not in production
-				dev: !production
-			}
+				dev: !production,
+			},
+		}),
+		url({
+			publicPath: 'build/',
+			limit: 0,
 		}),
 		// we'll extract any component CSS out into
 		// a separate file - better for performance
@@ -57,27 +44,44 @@ export default {
 		// https://github.com/rollup/plugins/tree/master/packages/commonjs
 		resolve({
 			browser: true,
-			dedupe: ['svelte']
+			dedupe: ['svelte'],
 		}),
 		commonjs(),
 		typescript({
-			sourceMap: !production,
-			inlineSources: !production
+			sourceMap: true,
+			inlineSources: !production,
 		}),
-
-		// In dev mode, call `npm run start` once
-		// the bundle has been generated
-		!production && serve(),
 
 		// Watch the `public` directory and refresh the
 		// browser on changes when not in production
-		!production && livereload('public'),
-
+		!production &&
+			livereload({
+				watch: 'public',
+				https: {
+					key: fs.readFileSync('./certs/localhost-key.pem'),
+					cert: fs.readFileSync('./certs/localhost.pem'),
+				},
+			}),
+		!production &&
+			dev({
+				port: '8080',
+				dirs: ['public'],
+				server: {
+					https: {
+						key: fs.readFileSync('./certs/localhost-key.pem'),
+						cert: fs.readFileSync('./certs/localhost.pem'),
+					},
+				},
+				proxy: [
+					{ from: '/api/*', to: 'https://demo.remark42.com' },
+					{ from: '/auth/*', to: 'https://demo.remark42.com' },
+				],
+			}),
 		// If we're building for production (npm run build
 		// instead of npm run dev), minify
-		production && terser()
+		production && terser(),
 	],
 	watch: {
-		clearScreen: false
-	}
-};
+		clearScreen: false,
+	},
+}
